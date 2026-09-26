@@ -502,3 +502,15 @@ def test_semantic_search_usearch_binary_matches_ubinary(rescore: bool) -> None:
             assert sorted(entry["score"] for entry in binary_results) == sorted(
                 entry["score"] for entry in ubinary_results
             )
+
+
+@pytest.mark.parametrize("precision", ["int8", "uint8", "binary", "ubinary"])
+@pytest.mark.parametrize("as_list", [False, True])
+def test_quantize_bfloat16_tensors(precision: str, as_list: bool) -> None:
+    """numpy has no bfloat16 dtype, so bfloat16 tensors (e.g. from a bfloat16 model) are upcast before quantizing."""
+    embeddings = torch.randn(4, 16, generator=torch.Generator().manual_seed(0)).bfloat16()
+    expected = quantize_embeddings(embeddings.float(), precision=precision)
+
+    quantized = quantize_embeddings(list(embeddings) if as_list else embeddings, precision=precision)
+
+    np.testing.assert_array_equal(quantized, expected)

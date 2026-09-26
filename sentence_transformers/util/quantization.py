@@ -5,6 +5,7 @@ import time
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
+import torch
 from torch import Tensor
 
 logger = logging.getLogger(__name__)
@@ -404,6 +405,13 @@ def semantic_search_usearch(
     return outputs
 
 
+def _tensor_to_numpy(embeddings: Tensor) -> np.ndarray:
+    # numpy has no bfloat16 dtype, so upcast those embeddings first, like `encode` does for its numpy output
+    if embeddings.dtype == torch.bfloat16:
+        embeddings = embeddings.float()
+    return embeddings.cpu().numpy()
+
+
 def quantize_embeddings(
     embeddings: Tensor | np.ndarray | list[Tensor] | list[np.ndarray],
     precision: Literal["float32", "int8", "uint8", "binary", "ubinary"],
@@ -438,12 +446,12 @@ def quantize_embeddings(
         ``(num_tokens, dim)`` arrays), returns a list of quantized matrices with shared per-dimension buckets.
     """
     if isinstance(embeddings, Tensor):
-        embeddings = embeddings.cpu().numpy()
+        embeddings = _tensor_to_numpy(embeddings)
     elif isinstance(embeddings, list):
         if not embeddings:
             return []
         if isinstance(embeddings[0], Tensor):
-            embeddings = [embedding.cpu().numpy() for embedding in embeddings]
+            embeddings = [_tensor_to_numpy(embedding) for embedding in embeddings]
         if isinstance(embeddings[0], np.ndarray) and embeddings[0].ndim == 2:
             # Calibrate once so all documents use the same ranges.
             if precision.endswith("int8") and ranges is None:
