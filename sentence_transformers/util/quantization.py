@@ -5,8 +5,9 @@ import time
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
-import torch
 from torch import Tensor
+
+from .tensor import _tensor_to_numpy
 
 logger = logging.getLogger(__name__)
 
@@ -403,13 +404,6 @@ def semantic_search_usearch(
     if output_index:
         outputs = (*outputs, corpus_index)
     return outputs
-
-
-def _tensor_to_numpy(embeddings: Tensor) -> np.ndarray:
-    # numpy has no bfloat16 dtype, so upcast those embeddings first, like `encode` does for its numpy output
-    if embeddings.dtype == torch.bfloat16:
-        embeddings = embeddings.float()
-    return embeddings.cpu().numpy()
 
 
 def quantize_embeddings(

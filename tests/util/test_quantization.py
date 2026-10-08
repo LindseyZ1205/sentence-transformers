@@ -504,13 +504,22 @@ def test_semantic_search_usearch_binary_matches_ubinary(rescore: bool) -> None:
             )
 
 
-@pytest.mark.parametrize("precision", ["int8", "uint8", "binary", "ubinary"])
-@pytest.mark.parametrize("as_list", [False, True])
-def test_quantize_bfloat16_tensors(precision: str, as_list: bool) -> None:
-    """numpy has no bfloat16 dtype, so bfloat16 tensors (e.g. from a bfloat16 model) are upcast before quantizing."""
+@pytest.mark.parametrize("precision", ["float32", "int8", "uint8", "binary", "ubinary"])
+@pytest.mark.parametrize("input_type", ["tensor", "list", "ragged"])
+def test_quantize_bfloat16_tensors(precision: str, input_type: str) -> None:
     embeddings = torch.randn(4, 16, generator=torch.Generator().manual_seed(0)).bfloat16()
     expected = quantize_embeddings(embeddings.float(), precision=precision)
 
-    quantized = quantize_embeddings(list(embeddings) if as_list else embeddings, precision=precision)
+    if input_type == "list":
+        embeddings = list(embeddings)
+    elif input_type == "ragged":
+        embeddings = [embeddings[:0], embeddings[:1], embeddings[1:]]
+
+    quantized = quantize_embeddings(embeddings, precision=precision)
+    if input_type == "ragged":
+        assert isinstance(quantized, list)
+        assert [matrix.shape[0] for matrix in quantized] == [0, 1, 3]
+        quantized = np.concatenate(quantized)
 
     np.testing.assert_array_equal(quantized, expected)
+    assert quantized.dtype == expected.dtype
