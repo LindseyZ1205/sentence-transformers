@@ -120,7 +120,6 @@ class RerankingEvaluator(BaseEvaluator):
         if isinstance(self.samples, dict):
             self.samples = list(self.samples.values())
 
-        # A single positive or negative document can be given as a string, e.g. from a triplet dataset
         self.samples = [
             {
                 **sample,
