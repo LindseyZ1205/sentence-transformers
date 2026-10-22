@@ -10,17 +10,28 @@ from sentence_transformers.sentence_transformer.evaluation import NanoBEIREvalua
 from sentence_transformers.util.similarity import SimilarityFunction
 from tests.utils import is_ci
 
-pytest.importorskip("datasets", exc_type=ModuleNotFoundError)
 
-if is_ci():
-    pytest.skip(
-        reason="Skip test in CI to try and avoid 429 Client Error",
-        allow_module_level=True,
-    )
+class LocalNanoBEIREvaluator(NanoBEIREvaluator):
+    def _load_dataset_subset_split(self, subset: str, split: str, required_columns: list[str]):
+        return {
+            "corpus": [
+                {"_id": "d0", "text": "Paris is the capital of France."},
+                {"_id": "d1", "text": "Berlin is the capital of Germany."},
+                {"_id": "d2", "text": "Leonardo da Vinci painted the Mona Lisa."},
+            ],
+            "queries": [
+                {"_id": "q0", "text": "What is the capital of France?"},
+                {"_id": "q1", "text": "Who painted the Mona Lisa?"},
+            ],
+            "qrels": [{"query-id": "q0", "corpus-id": "d0"}, {"query-id": "q1", "corpus-id": "d2"}],
+        }[subset]
 
 
+@pytest.mark.skipif(is_ci(), reason="Avoid rate limits when downloading NanoBEIR datasets in CI")
 def test_nanobeir_evaluator(static_retrieval_mrl_en_v1_model: SentenceTransformer):
     """Tests that the NanoBEIREvaluator can be loaded and produces expected metrics"""
+    pytest.importorskip("datasets", exc_type=ModuleNotFoundError)
+
     datasets = ["QuoraRetrieval", "MSMARCO"]
     query_prompts = {
         "QuoraRetrieval": "Instruct: Given a question, retrieve questions that are semantically equivalent to the given question\\nQuery: ",
@@ -33,8 +44,11 @@ def test_nanobeir_evaluator(static_retrieval_mrl_en_v1_model: SentenceTransforme
     assert all(isinstance(results[metric], float) for metric in results)
 
 
+@pytest.mark.skipif(is_ci(), reason="Avoid rate limits when downloading NanoBEIR datasets in CI")
 def test_nanobeir_evaluator_custom_dataset_id(static_retrieval_mrl_en_v1_model: SentenceTransformer):
     """Tests that the NanoBEIREvaluator can load and evaluate on a custom dataset_id"""
+    pytest.importorskip("datasets", exc_type=ModuleNotFoundError)
+
     datasets = ["MSMARCO", "NQ"]
     model = static_retrieval_mrl_en_v1_model
     evaluator = NanoBEIREvaluator(
@@ -66,10 +80,10 @@ def test_nanobeir_evaluator_empty_inputs():
         NanoBEIREvaluator(dataset_names=[])
 
 
-def test_nanobeir_evaluator_main_score_function_as_string(static_retrieval_mrl_en_v1_model: SentenceTransformer):
+def test_nanobeir_evaluator_main_score_function_as_string(stsb_bert_tiny_model: SentenceTransformer):
     """Tests that main_score_function accepts a string, as the signature and docstring promise."""
-    model = static_retrieval_mrl_en_v1_model
-    evaluator = NanoBEIREvaluator(dataset_names=["MSMARCO"], main_score_function="cosine")
+    model = stsb_bert_tiny_model
+    evaluator = LocalNanoBEIREvaluator(dataset_names=["MSMARCO"], main_score_function="cosine")
 
     assert evaluator.main_score_function == SimilarityFunction.COSINE
 
@@ -83,22 +97,6 @@ def test_nanobeir_evaluator_aggregate_key_with_underscore(
     stsb_bert_tiny_model: SentenceTransformer, truncate_dim: int | None
 ):
     """Tests that the aggregated metrics keep their names when the aggregate_key contains an underscore"""
-
-    class LocalNanoBEIREvaluator(NanoBEIREvaluator):
-        # Uses a small local dataset instead of downloading the NanoBEIR datasets
-        def _load_dataset_subset_split(self, subset: str, split: str, required_columns: list[str]):
-            return {
-                "corpus": [
-                    {"_id": "d0", "text": "Paris is the capital of France."},
-                    {"_id": "d1", "text": "Berlin is the capital of Germany."},
-                    {"_id": "d2", "text": "Leonardo da Vinci painted the Mona Lisa."},
-                ],
-                "queries": [
-                    {"_id": "q0", "text": "What is the capital of France?"},
-                    {"_id": "q1", "text": "Who painted the Mona Lisa?"},
-                ],
-                "qrels": [{"query-id": "q0", "corpus-id": "d0"}, {"query-id": "q1", "corpus-id": "d2"}],
-            }[subset]
 
     evaluator = LocalNanoBEIREvaluator(
         dataset_names=["MSMARCO", "NQ"],
