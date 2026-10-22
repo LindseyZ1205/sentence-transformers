@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+import numpy as np
 import pytest
 
 from sentence_transformers import SentenceTransformer
@@ -75,3 +76,50 @@ def test_nanobeir_evaluator_main_score_function_as_string(static_retrieval_mrl_e
     results = evaluator(model)
     assert evaluator.primary_metric == "NanoBEIR_mean_cosine_ndcg@10"
     assert isinstance(results[evaluator.primary_metric], float)
+
+
+@pytest.mark.parametrize("truncate_dim", [None, 64])
+def test_nanobeir_evaluator_aggregate_key_with_underscore(
+    stsb_bert_tiny_model: SentenceTransformer, truncate_dim: int | None
+):
+    """Tests that the aggregated metrics keep their names when the aggregate_key contains an underscore"""
+
+    class LocalNanoBEIREvaluator(NanoBEIREvaluator):
+        # Uses a small local dataset instead of downloading the NanoBEIR datasets
+        def _load_dataset_subset_split(self, subset: str, split: str, required_columns: list[str]):
+            return {
+                "corpus": [
+                    {"_id": "d0", "text": "Paris is the capital of France."},
+                    {"_id": "d1", "text": "Berlin is the capital of Germany."},
+                    {"_id": "d2", "text": "Leonardo da Vinci painted the Mona Lisa."},
+                ],
+                "queries": [
+                    {"_id": "q0", "text": "What is the capital of France?"},
+                    {"_id": "q1", "text": "Who painted the Mona Lisa?"},
+                ],
+                "qrels": [{"query-id": "q0", "corpus-id": "d0"}, {"query-id": "q1", "corpus-id": "d2"}],
+            }[subset]
+
+    evaluator = LocalNanoBEIREvaluator(
+        dataset_names=["MSMARCO", "NQ"],
+        aggregate_fn=np.median,
+        aggregate_key="median_score",
+        truncate_dim=truncate_dim,
+        write_csv=False,
+    )
+    results = evaluator(stsb_bert_tiny_model)
+
+    suffix = f"_{truncate_dim}" if truncate_dim else ""
+    assert evaluator.primary_metric == f"NanoBEIR_median_score{suffix}_cosine_ndcg@10"
+    dataset_metrics = {
+        key.removeprefix(f"NanoMSMARCO{suffix}_") for key in results if key.startswith(f"NanoMSMARCO{suffix}_")
+    }
+    aggregated_metrics = {
+        key.removeprefix(f"NanoBEIR_median_score{suffix}_")
+        for key in results
+        if key.startswith(f"NanoBEIR_median_score{suffix}_")
+    }
+    assert aggregated_metrics == dataset_metrics
+    assert results[evaluator.primary_metric] == pytest.approx(
+        np.median([results[f"NanoMSMARCO{suffix}_cosine_ndcg@10"], results[f"NanoNQ{suffix}_cosine_ndcg@10"]])
+    )
